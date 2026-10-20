@@ -206,4 +206,220 @@ def excluir_pet(cursor, id_pet):
 
 
 
-        
+def listar_pets_do_tutor(cursor, id_tutor):
+    cursor.execute("SELECT id_tutor FROM dbo.tutor WHERE id_tutor = ?", id_tutor)
+    if cursor.fetchone() is None:
+        raise ValueError("Tutor não encontrado!")
+
+    cursor.execute("SELECT * FROM dbo.pet WHERE id_tutor = ?", id_tutor)
+    return cursor.fetchall()
+
+def buscar_pet_com_tutor(cursor, id_pet):
+    query = """
+        SELECT p.*, t.nome AS nome_tutor, t.cpf AS cpf_tutor,
+               t.email AS email_tutor, t.telefone AS telefone_tutor
+        FROM dbo.pet p
+        JOIN dbo.tutor t ON p.id_tutor = t.id_tutor
+        WHERE p.id_pet = ?
+    """
+    cursor.execute(query, id_pet)
+    return cursor.fetchone()
+
+def agendar_consulta(cursor, id_pet, id_vet, data_hora, motivo, observacoes, procedimentos):
+
+    if not procedimentos:
+        raise ValueError("Selecione pelo menos um procedimento.")
+
+    query = """
+        INSERT INTO dbo.consulta
+        (id_pet, id_veterinario, data_hora, motivo, observacoes)
+        OUTPUT INSERTED.id_consulta
+        VALUES (?, ?, ?, ?, ?)
+    """
+
+    try:
+        cursor.execute(
+            query,
+            id_pet,
+            id_vet,
+            data_hora,
+            motivo,
+            observacoes
+        )
+
+        id_consulta = cursor.fetchone()[0]
+
+        for id_procedimento, quantidade in procedimentos:
+
+            if quantidade <= 0:
+                raise ValueError(
+                    "A quantidade deve ser maior que zero."
+                )
+
+            cursor.execute(
+                """
+                SELECT preco_base
+                FROM dbo.procedimento
+                WHERE id_procedimento = ?
+                """,
+                id_procedimento
+            )
+
+            resultado = cursor.fetchone()
+
+            if resultado is None:
+                raise ValueError(
+                    f"Procedimento {id_procedimento} não encontrado."
+                )
+
+            preco_base = resultado.preco_base
+
+            cursor.execute(
+                """
+                INSERT INTO dbo.consulta_procedimento
+                (id_consulta, id_procedimento, quantidade, valor_cobrado)
+                VALUES (?, ?, ?, ?)
+                """,
+                id_consulta,
+                id_procedimento,
+                quantidade,
+                preco_base
+            )
+
+        return id_consulta
+
+    except pyodbc.IntegrityError as erro:
+
+        if "fk_consulta_pet" in str(erro):
+            raise ValueError(
+                "Não existe pet com esse ID."
+            ) from erro
+
+        elif "fk_consulta_vet" in str(erro):
+            raise ValueError(
+                "Não existe veterinário com esse ID."
+            ) from erro
+
+        elif "pk_consulta_procedimento" in str(erro):
+            raise ValueError(
+                "Existe um procedimento repetido na consulta."
+            ) from erro
+
+        elif "ck_cp_qtd" in str(erro):
+            raise ValueError(
+                "A quantidade do procedimento deve ser maior que zero."
+            ) from erro
+
+        else:
+            raise ValueError(
+                "Erro de integridade ao agendar consulta."
+            ) from erro
+
+def adicionar_procedimento(cursor, id_consulta, id_procedimento, quantidade):
+    if quantidade <= 0:
+        raise ValueError("A quantidade deve ser maior que zero!")
+
+    cursor.execute("SELECT status FROM dbo.consulta WHERE id_consulta = ?", id_consulta)
+    consulta = cursor.fetchone()
+    if consulta is None:
+        raise ValueError("Consulta não encontrada!")
+    if consulta.status == "CANCELADA":
+        raise ValueError("Não é possível adicionar procedimento a consulta cancelada!")
+
+    cursor.execute("SELECT preco_base FROM dbo.procedimento WHERE id_procedimento = ?", id_procedimento)
+    resultado = cursor.fetchone()
+    if resultado is None:
+        raise ValueError("Procedimento não encontrado!")
+
+    try:
+        cursor.execute("""
+            INSERT INTO dbo.consulta_procedimento
+            (id_consulta, id_procedimento, quantidade, valor_cobrado)
+            VALUES (?, ?, ?, ?)
+        """, id_consulta, id_procedimento, quantidade, resultado.preco_base)
+    except pyodbc.IntegrityError as erro:
+        if "pk_consulta_procedimento" in str(erro):
+            raise ValueError("Procedimento já adicionado à consulta!") from erro
+        raise
+
+def remover_procedimento(cursor, id_consulta, id_procedimento):
+    cursor.execute("SELECT status FROM dbo.consulta WHERE id_consulta = ?", id_consulta)
+    consulta = cursor.fetchone()
+    if consulta is None:
+        raise ValueError("Consulta não encontrada!")
+    if consulta.status == "CANCELADA":
+        raise ValueError("Não é possível remover procedimento de consulta cancelada!")
+
+    cursor.execute("""
+        DELETE FROM dbo.consulta_procedimento
+        WHERE id_consulta = ? AND id_procedimento = ?
+    """, id_consulta, id_procedimento)
+    if cursor.rowcount == 0:
+        raise ValueError("Procedimento não encontrado nessa consulta!")
+
+def listar_procedimentos_da_consulta(cursor, id_consulta):
+    cursor.execute("""
+        SELECT p.id_procedimento, p.descricao, p.preco_base,
+               cp.quantidade, cp.valor_cobrado
+        FROM dbo.procedimento p
+        INNER JOIN dbo.consulta_procedimento cp
+            ON p.id_procedimento = cp.id_procedimento
+        WHERE cp.id_consulta = ?
+    """, id_consulta)
+    return cursor.fetchall()
+
+def listar_consultas_por_procedimento(cursor, id_procedimento):
+    try:
+        cursor.execute(
+            """SELECT c.* FROM dbo.consulta c 
+            INNER JOIN dbo.consulta_procedimento cp ON c.id_consulta = cp.id_consulta 
+            WHERE cp.id_procedimento = ?""",
+            id_procedimento
+        )
+        return cursor.fetchall()
+
+    except pyodbc.IntegrityError as erro:
+        raise ValueError(
+            "Erro de integridade ao listar consultas por procedimento."
+        ) from erro
+
+def total_da_consulta(cursor, id_consulta):
+    cursor.execute("SELECT id_consulta FROM dbo.consulta WHERE id_consulta = ?", id_consulta)
+    if cursor.fetchone() is None:
+        raise ValueError("Consulta não encontrada!")
+
+    cursor.execute("""
+        SELECT SUM(quantidade * valor_cobrado) AS total
+        FROM dbo.consulta_procedimento
+        WHERE id_consulta = ?
+    """, id_consulta)
+    resultado = cursor.fetchone()
+    return resultado.total if resultado.total is not None else 0.0
+
+def atualizar_status_consulta(cursor, id_consulta, status):
+    status = status.strip().upper()
+    if status not in ("AGENDADA", "REALIZADA", "CANCELADA"):
+        raise ValueError("Status inválido! Use AGENDADA, REALIZADA ou CANCELADA.")
+
+    cursor.execute("UPDATE dbo.consulta SET status = ? WHERE id_consulta = ?", status, id_consulta)
+    if cursor.rowcount == 0:
+        raise ValueError("Consulta não encontrada!")
+
+def excluir_consulta(cursor, id_consulta):
+    cursor.execute("DELETE FROM dbo.consulta WHERE id_consulta = ?", id_consulta)
+    if cursor.rowcount == 0:
+        raise ValueError("Consulta não encontrada!")
+
+def historico_do_pet(cursor, id_pet):
+    cursor.execute("SELECT id_pet FROM dbo.pet WHERE id_pet = ?", id_pet)
+    if cursor.fetchone() is None:
+        raise ValueError("Pet não encontrado!")
+
+    cursor.execute("""
+        SELECT v.* FROM dbo.vw_resumo_consulta v
+        INNER JOIN dbo.consulta c ON v.id_consulta = c.id_consulta
+        WHERE c.id_pet = ?
+        ORDER BY v.data_hora
+    """, id_pet)
+    return cursor.fetchall()
+

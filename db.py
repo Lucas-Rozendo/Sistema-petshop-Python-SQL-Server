@@ -39,3 +39,32 @@ def transacao(conn_str):
         if cursor is not None:
             cursor.close()
         conn.close()
+
+
+def testar_conexao(conn_str):
+    conn = conectar(conn_str)
+
+    try:
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT
+                    @@SERVERNAME AS servidor,
+                    DB_NAME() AS banco,
+                    SERVERPROPERTY('ProductVersion') AS versao
+            """)
+
+            resultado = cursor.fetchone()
+
+            return (
+                resultado.servidor,
+                resultado.banco,
+                resultado.versao
+            )
+
+        finally:
+            cursor.close()
+
+    finally:
+        conn.close()

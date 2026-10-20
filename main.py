@@ -1,4 +1,5 @@
 
+import pyodbc
 from getpass import getpass
 from db import montar_connection_string, conectar, transacao
 from repositorio import *
@@ -317,10 +318,48 @@ while True:
                     print("Erro:", erro)
 
             elif opcao_pet == "5":
-                print("Listar pets do tutor - ainda não implementado.")
+                try:
+                    id_tutor = int(input("ID do tutor: "))
+
+                    with transacao(conn_str) as cursor:
+                        pets = listar_pets_do_tutor(cursor, id_tutor)
+
+                    if pets:
+                        for pet in pets:
+                            print("ID:", pet.id_pet)
+                            print("Nome:", pet.nome)
+                            print("Espécie:", pet.especie)
+                            print("Raça:", pet.raca)
+                            print("Data de nascimento:", pet.data_nascimento)
+                            print("Peso (kg):", pet.peso_kg)
+                            print("----------------------")
+                    else:
+                        print("Nenhum pet encontrado para esse tutor.")
+
+                except ValueError as erro:
+                    print("Erro:", erro)
 
             elif opcao_pet == "6":
-                print("Buscar pet com tutor - ainda não implementado.")
+                try:
+                    id_pet = int(input("ID do pet: "))
+
+                    with transacao(conn_str) as cursor:
+                        pet_info = buscar_pet_com_tutor(cursor, id_pet)
+
+                    if pet_info:
+                        print("ID do Pet:", pet_info.id_pet)
+                        print("Nome do Pet:", pet_info.nome)
+                        print("Espécie:", pet_info.especie)
+                        print("Raça:", pet_info.raca)
+                        print("Data de nascimento:", pet_info.data_nascimento)
+                        print("Peso (kg):", pet_info.peso_kg)
+                        print("ID do Tutor:", pet_info.id_tutor)
+                        print("Nome do Tutor:", pet_info.nome_tutor)
+                    else:
+                        print("Pet não encontrado.")
+
+                except ValueError as erro:
+                    print("Erro:", erro)
 
             elif opcao_pet == "0":
                 break
@@ -347,29 +386,292 @@ while True:
 
             opcao_consultas = input("Escolha uma opção: ")
 
+            
             if opcao_consultas == "1":
-                print("Agendar consulta - ainda não implementado.")
+                try:
+                    print("\n===== AGENDAR CONSULTA =====")
+
+                  
+                    with transacao(conn_str) as cursor:
+                        cursor.execute("""
+                            SELECT id_pet, nome, especie
+                            FROM dbo.pet
+                            ORDER BY id_pet
+                        """)
+                        pets = cursor.fetchall()
+
+                    print("\n===== PETS CADASTRADOS =====")
+
+                    for pet in pets:
+                        print("ID:", pet.id_pet)
+                        print("Nome:", pet.nome)
+                        print("Espécie:", pet.especie)
+                        print("----------------------")
+
+                    if not pets:
+                        raise ValueError("Nenhum pet cadastrado!")
+
+                    id_pet = int(input("Digite o ID do pet: "))
+
+                    
+                    with transacao(conn_str) as cursor:
+                        cursor.execute("""
+                            SELECT id_veterinario, nome, especialidade
+                            FROM dbo.veterinario
+                            WHERE ativo = 1
+                            ORDER BY id_veterinario
+                        """)
+                        veterinarios = cursor.fetchall()
+
+                    print("\n===== VETERINÁRIOS DISPONÍVEIS =====")
+
+                    for vet in veterinarios:
+                        print("ID:", vet.id_veterinario)
+                        print("Nome:", vet.nome)
+                        print("Especialidade:", vet.especialidade)
+                        print("----------------------")
+
+                    if not veterinarios:
+                        raise ValueError("Nenhum veterinário ativo disponível!")
+
+                    id_vet = int(input("Digite o ID do veterinário: "))
+
+                    # Informações da consulta
+                    data_hora = input(
+                        "Data e hora da consulta (DD/MM/AAAA HH:MM): "
+                    )
+
+                    data_hora_formatada = datetime.strptime(
+                        data_hora, "%d/%m/%Y %H:%M"
+                    )
+
+                    motivo = input("Motivo da consulta: ")
+                    observacoes = input("Observações: ")
+
+                    if observacoes == "":
+                        observacoes = None
+
+                    with transacao(conn_str) as cursor:
+                        cursor.execute("""
+                            SELECT id_procedimento, descricao, preco_base
+                            FROM dbo.procedimento
+                            ORDER BY id_procedimento
+                        """)
+                        procedimentos_existentes = cursor.fetchall()
+
+                    print("\n===== PROCEDIMENTOS DISPONÍVEIS =====")
+
+                    for proc in procedimentos_existentes:
+                        print(
+                            f"{proc.id_procedimento} - "
+                            f"{proc.descricao} - "
+                            f"R$ {proc.preco_base:.2f}"
+                        )
+
+                    # Selecionar procedimentos
+                    procedimentos_selecionados = []
+
+                    ids_validos = {
+                        proc.id_procedimento
+                        for proc in procedimentos_existentes
+                    }
+
+                    while True:
+                        id_procedimento = int(input(
+                            "\nID do procedimento (0 para finalizar): "
+                        ))
+
+                        if id_procedimento == 0:
+                            break
+
+                        if id_procedimento not in ids_validos:
+                            print("Procedimento não encontrado!")
+                            continue
+
+                        if any(
+                            p[0] == id_procedimento
+                            for p in procedimentos_selecionados
+                        ):
+                            print("Procedimento já selecionado!")
+                            continue
+
+                        quantidade = int(input("Quantidade: "))
+
+                        if quantidade <= 0:
+                            print("A quantidade deve ser maior que zero!")
+                            continue
+
+                        procedimentos_selecionados.append(
+                            (id_procedimento, quantidade)
+                        )
+
+                    print("\n===== PROCEDIMENTOS SELECIONADOS =====")
+
+                    for id_proc, quantidade in procedimentos_selecionados:
+                        print(f"ID: {id_proc} | Quantidade: {quantidade}")
+
+                    
+                    with transacao(conn_str) as cursor:
+                        id_consulta = agendar_consulta(
+                            cursor,
+                            id_pet,
+                            id_vet,
+                            data_hora_formatada,
+                            motivo,
+                            observacoes,
+                            procedimentos_selecionados
+                        )
+
+                    print("\nConsulta agendada com sucesso!")
+                    print("ID da consulta:", id_consulta)
+
+                except ValueError as erro:
+                    print("Erro nos dados informados:", erro)
+
+                except pyodbc.Error as erro:
+                    print("Erro no banco de dados:", erro)
+
+                            
 
             elif opcao_consultas == "2":
-                print("Adicionar procedimento - ainda não implementado.")
+                try:
+                    id_consulta = int(input("ID da consulta: "))
+                    with transacao(conn_str) as cursor:
+                        cursor.execute("""
+                            SELECT id_procedimento, descricao, preco_base
+                            FROM dbo.procedimento ORDER BY id_procedimento
+                        """)
+                        procedimentos = cursor.fetchall()
+
+                    print("\n===== PROCEDIMENTOS DISPONÍVEIS =====")
+                    for proc in procedimentos:
+                        print(f"{proc.id_procedimento} - {proc.descricao} - R$ {proc.preco_base:.2f}")
+
+                    id_procedimento = int(input("ID do procedimento: "))
+                    quantidade = int(input("Quantidade: "))
+
+                    with transacao(conn_str) as cursor:
+                        adicionar_procedimento(cursor, id_consulta, id_procedimento, quantidade)
+
+                    print("Procedimento adicionado à consulta com sucesso!")
+                except ValueError as erro:
+                    print("Erro:", erro)
+                except pyodbc.Error as erro:
+                    print("Erro no banco de dados:", erro)
 
             elif opcao_consultas == "3":
-                print("Remover procedimento - ainda não implementado.")
+                try:
+                    id_consulta = int(input("ID da consulta: "))
+                    id_procedimento = int(input("ID do procedimento: "))
+
+                    with transacao(conn_str) as cursor:
+                        remover_procedimento(
+                            cursor, id_consulta, id_procedimento
+                        )
+
+                    print("Procedimento removido da consulta com sucesso!")
+
+                except ValueError as erro:
+                    print("Erro nos dados informados:", erro)
+
+                except pyodbc.Error as erro:
+                    print("Erro no banco de dados:", erro)
 
             elif opcao_consultas == "4":
-                print("Listar procedimentos - ainda não implementado.")
+                try:
+                    id_consulta = int(input("ID da consulta: "))
+
+                    with transacao(conn_str) as cursor:
+                        procedimentos = listar_procedimentos_da_consulta(
+                            cursor, id_consulta
+                        )
+
+                    if procedimentos:
+                        print("\n===== PROCEDIMENTOS DA CONSULTA =====")
+                        for proc in procedimentos:
+                            print("ID:", proc.id_procedimento)
+                            print("Descrição:", proc.descricao)
+                            print("Preço base:", proc.preco_base)
+                            print("Quantidade:", proc.quantidade)
+                            print("----------------------")
+                    else:
+                        print("Nenhum procedimento encontrado para essa consulta.")
+
+                except ValueError as erro:
+                    print("Erro nos dados informados:", erro)
 
             elif opcao_consultas == "5":
-                print("Listar consultas por procedimento - ainda não implementado.")
+                try:
+                    id_procedimento = int(input("ID do procedimento: "))
+
+                    with transacao(conn_str) as cursor:
+                        consultas = listar_consultas_por_procedimento(
+                            cursor, id_procedimento
+                        )
+
+                    if consultas:
+                        print("\n===== CONSULTAS COM O PROCEDIMENTO =====")
+                        for consulta in consultas:
+                            print("ID da Consulta:", consulta.id_consulta)
+                            print("ID do Pet:", consulta.id_pet)
+                            print("ID do Veterinário:", consulta.id_veterinario)
+                            print("Data e Hora:", consulta.data_hora)
+                            print("Motivo:", consulta.motivo)
+                            print("Observações:", consulta.observacoes)
+                            print("----------------------")
+                    else:
+                        print("Nenhuma consulta encontrada para esse procedimento.")
+
+                except ValueError as erro:
+                    print("Erro nos dados informados:", erro)
 
             elif opcao_consultas == "6":
-                print("Total da consulta - ainda não implementado.")
+                try:
+                    id_consulta = int(input("ID da consulta: "))
+
+                    with transacao(conn_str) as cursor:
+                        total = total_da_consulta(cursor, id_consulta)
+
+                    print(f"Total da consulta (ID {id_consulta}): R$ {total:.2f}")
+
+                except ValueError as erro:
+                    print("Erro nos dados informados:", erro)
+
+                except pyodbc.Error as erro:
+                    print("Erro no banco de dados:", erro)
 
             elif opcao_consultas == "7":
-                print("Atualizar status - ainda não implementado.")
+                try:
+                    id_consulta = int(input("ID da consulta: "))
+                    novo_status = input("Novo status (AGENDADA, REALIZADA, CANCELADA): ")
+
+                    with transacao(conn_str) as cursor:
+                        atualizar_status_consulta(
+                            cursor, id_consulta, novo_status
+                        )
+
+                    print("Status da consulta atualizado com sucesso!")
+
+                except ValueError as erro:
+                    print("Erro nos dados informados:", erro)
+
+                except pyodbc.Error as erro:
+                    print("Erro no banco de dados:", erro)
 
             elif opcao_consultas == "8":
-                print("Excluir consulta - ainda não implementado.")
+                try:
+                    id_consulta = int(input("ID da consulta: "))
+
+                    with transacao(conn_str) as cursor:
+                        excluir_consulta(cursor, id_consulta)
+
+                    print("Consulta excluída com sucesso!")
+
+                except ValueError as erro:
+                    print("Erro nos dados informados:", erro)
+
+                except pyodbc.Error as erro:
+                    print("Erro no banco de dados:", erro)
 
             elif opcao_consultas == "0":
                 break
@@ -381,8 +683,29 @@ while True:
     # 4 - HISTÓRICO DO PET
     # ==========================================
     elif opcao == "4":
-        print("\n===== HISTÓRICO DO PET =====")
-        print("Histórico do pet - ainda não implementado.")
+        try:
+            print("\n===== HISTÓRICO DO PET =====")
+            id_pet = int(input("ID do pet: "))
+            with transacao(conn_str) as cursor:
+                historico = historico_do_pet(cursor, id_pet)
+
+            if historico:
+                for consulta in historico:
+                    print("\nID da consulta:", consulta.id_consulta)
+                    print("Pet:", consulta.pet)
+                    print("Tutor:", consulta.tutor)
+                    print("Veterinário:", consulta.veterinario)
+                    print("Data e hora:", consulta.data_hora)
+                    print("Status:", consulta.status)
+                    print("Quantidade de itens:", consulta.qtd_itens)
+                    print("Valor total:", consulta.valor_total)
+                    print("----------------------")
+            else:
+                print("Nenhuma consulta encontrada para esse pet.")
+        except ValueError as erro:
+            print("Erro:", erro)
+        except pyodbc.Error as erro:
+            print("Erro no banco de dados:", erro)
 
     # ==========================================
     # 0 - ENCERRAR SISTEMA
