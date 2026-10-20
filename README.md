@@ -61,7 +61,7 @@ Se sua instância tiver outro nome, modifique `Server=` na função `montar_conn
 
 1. No SSMS, conecte-se com uma conta administrativa usando a autenticação do Windows.
 2. Em **Propriedades do servidor > Segurança**, habilite **Modo de Autenticação do SQL Server e do Windows** e reinicie o serviço SQL Server.
-3. Execute a seção opcional de criação do login, ao final do script fornecido pelo professor, ajustando a senha para uma senha forte de uso próprio. Essa seção cria o login da aplicação, associa-o ao banco e atribui as funções `db_datareader` e `db_datawriter`.
+3. Execute a seção opcional de criação do login, ajustando a senha para uma senha forte de uso próprio. Essa seção cria o login da aplicação, associa-o ao banco e atribui as funções `db_datareader` e `db_datawriter`.
 4. No terminal, ao executar `main.py`, informe o login e a senha criados.
 
 **Segurança:** não inclua senhas reais em `db.py`, `README.md`, commits ou capturas de tela. O programa usa `getpass()` para não exibir a senha digitada. Em produção, prefira gerenciamento de segredos ou variáveis de ambiente e evite manter credenciais em texto puro por mais tempo do que o necessário.
